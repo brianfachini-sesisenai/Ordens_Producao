@@ -51,3 +51,81 @@ if __name__=='__main__':
     init_db()
     
     app.run(debug=True, host='0.0.0.0', port='5000')
+    
+# ROTA POR ID - BUSCAR UMA ORDEM ESPECIFICA PELO ID (GET)
+
+@app.route('/ordens/<int:ordem_id>', methods=['GET'])
+
+def buscar_ordem(ordem_id):
+    """
+    Buscar uma única ordem de produção pelo ID.
+    
+    Parametros de URL:
+        - Ordem id(int): ID da ordem a ser buscada.
+        
+    Retornar:
+        200 + JSON da ordem, se for encontrada.
+        404 + mensagem de erro, se não existir.
+    """
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    # o '?' é substituido pelo valor de ordem_id de forma segura
+    cursor.execute('SELECT * FROM ordens WHERE id = ?', (ordem_id))
+    ordem = cursor.fetchone() # Ele retorna um único registro ou None
+    conn.close()
+    
+    # Se o ID nao existir, retornamos 404
+    if ordem is None:
+        return jsonify({'erro': f'Ordem {ordem_id} nao encontrada.'}), 404
+    return jsonify(dict(ordem)), 200
+
+# ROTA: CRIAR NOVA ORDEM DE PRODUÇÃO
+@app.route('ordens', methods=['POST'])
+def criar_ordem():
+    """
+    Cria uma nova ordem de produão a partir dos dados JSON enviados.
+    
+    Body esperado(JSON):
+    
+        produto    (str) : Nome do produto     - Obrigatório
+        quantidade (int) : Quantidade de Peças - Obrigatório, > 0
+        status     (str) : Opcional            - Padrão : 'Pendente'
+        
+    Retorno:
+        201 : JSON da ordem criada, em caso de sucesso.
+        400 : Mensagem de erro, se dados inválidos
+    """
+    
+    dados = request.get_json()
+    
+    if not dados:
+        return jsonify({'erro': 'Body da requisicao ausente ou invalido'}), 400
+    
+    # Verificação de Campo Obrigatório (produto)
+    produto = dados.get('produto')
+    if not produto:
+        return jsonify({'erro': 'Campo "Produto" e obrigatorio e não pode ser vazio.'}), 400
+    # Verificação de Campo Obrigatório (quantidade)
+    quantidade = dados.get('quantidade')
+    if quantidade is None:
+        return jsonify({'erro': 'Campo "quantidade" e obrigatorio.'}), 400
+    # Verifica se quantidade é um número inteiro e positivo
+    try:
+        quantidade = int(quantidade)
+        if quantidade <= 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        return jsonify({'erro': 'Campo "Quantidade" deve ser um'})
+    #Status (*pendentes, em andamento, concluída) - opcional
+    status_validos = ['Pendente', 'Em andamento', 'Concluida']    
+    status = dados.get('status', 'Pendente')
+    if status not in status_validos:
+        return jsonify({}), 400
+
+# PONTO DE PARTIDA
+
+if __name__== '__main__':
+    init_db()
+    
+    app.run(debug=True, host='0.0.0.0', port=5000)
