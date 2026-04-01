@@ -106,10 +106,12 @@ def criar_ordem():
     produto = dados.get('produto')
     if not produto:
         return jsonify({'erro': 'Campo "Produto" e obrigatorio e não pode ser vazio.'}), 400
+    
     # Verificação de Campo Obrigatório (quantidade)
     quantidade = dados.get('quantidade')
     if quantidade is None:
         return jsonify({'erro': 'Campo "quantidade" e obrigatorio.'}), 400
+    
     # Verifica se quantidade é um número inteiro e positivo
     try:
         quantidade = int(quantidade)
@@ -117,13 +119,35 @@ def criar_ordem():
             raise ValueError()
     except (ValueError, TypeError):
         return jsonify({'erro': 'Campo "Quantidade" deve ser um'})
+    
     #Status (*pendentes, em andamento, concluída) - opcional
-    status_validos = ['Pendente', 'Em andamento', 'Concluida']    
+    status_validos = ['Pendente', 'Em andamento', 'Concluida']  # Criar lista/Vetor
     status = dados.get('status', 'Pendente')
     if status not in status_validos:
-        return jsonify({}), 400
+        return jsonify({'erro': f'Status invalido. sUse {status_validos}'}), 400
+    
+    #Inserção dos dados no banco - Toda vez que for fazer alg orelacionado a banco, utiliza-se:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute (
+        'INSERT INTO ordens (produto, quantidade, status ) VALUES (?, ?, ?)',
+        (produto, quantidade, status)
+    )
+    conn.commit()
 
-# PONTO DE PARTIDA
+    # Recuperando o ID que é gerado automaticamente pelo banco
+    novo_id = cursor.lastrowid
+    conn.close()
+    
+    # Buscar o registro que foi recem-criado
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM ordens WHERE id = ?', (novo_id,))
+    nova_ordem = cursor.fetchone()
+    conn.close()
+    # 201 - Retornar "created" com o registro completo
+    return jsonify(dict(nova_ordem)), 201
+# ----------------------------------------- PONTO DE PARTIDA -----------------------------------------
 
 if __name__== '__main__':
     init_db()
