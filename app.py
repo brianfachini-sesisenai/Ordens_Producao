@@ -1,8 +1,16 @@
+#=======================================================================
+# app.py - SISTEMA DE ORDENS DE PRODUÇÃO - C.R.U.D COMPLETO
+# SENAI JARAGUÁ DO SUL - TÉCNICO EM CIBERSISTEMAS PARA AUTOMAÇÃO - 26/01
+#=======================================================================
+
 # BACK-END FLASK: ROTAS DA API REST
 
+# ------------------------------ IMPORTES ------------------------------
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from database import init_db, get_connection
+import datetime
+# ----------------------------------------------------------------------
 
 # Cria uma instancia da aplicação Flask
 app = Flask(__name__, static_folder='static', static_url_path='')
@@ -19,12 +27,19 @@ def index():
 # ROTA N2 - Status API
 @app.route('/status')
 def status():
-    """Rota de Verificação da API (Saúde)
-    Retornar um JSON informando que o servidor está ativo"""
+    #Rota de Verificação da API (Saúde)
+    # Retornar um JSON informando que o servidor está ativo
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) as total FROM ordens')
+    resultado = cursor.fetchone()
+    conn.close()
     return jsonify({
         "status": "online",
-        "sistema": "Sistema de ordem de Produção",
-        "versao": "1.0.0",
+        "sistema": "Sistema de ordem de Producao",
+        "versao": "2.0.0",
+        "total_ordens": resultado["total"],
+        "times_tamp": datetime.datetime.now().strftime("%Y-%m-%d%H:%M:%S"),
         "mensagem": "Ola, Fabrica, API FUNCIONANDO"
     })
 
@@ -123,6 +138,96 @@ def criar_ordem():
     # 201 - Retornar "created" com o registro completo
     return jsonify(dict(nova_ordem)), 201
 
+# ROTA - ATUALIZAR O STATUS EM UMA ORDEM DE PRODUÇÃO (PUT)
+@app.route('/ordens/<int:ordem_id>', methods=['PUT'])
+def atualizar_ordens(ordem_id):
+    """
+    Atualizar o status de uma ordem de produto existente.
+    
+    Parametros de URL:
+        ordem_id (int): ID da ordem a atualizar.
+        
+    Body esperado (JSON):
+        status (str): Novo Status. Valores aceitos:
+            'Pendente', 'Em andamento', 'Concluida'.
+            
+    Retorna:
+        200: JSON da ordem atualizada;
+        400: Erro se status for inválido;
+        404: Erro se ordem não foi encontrada.
+    """
+    
+    dados = request.get_json()
+    
+    if not dados:
+        return jsonify({'erro': 'Body da requisição ausente ou e invalido.'}), 400
+    
+    # Validação do campo do status
+    status_validos = ['Pendente', 'Em andamento', 'Concluida']
+    novo_status = dados.get('status', '').strip()
+    
+    if not novo_status:
+        return jsonify({'erro': 'Campo "Status" e obrigatorio.'}), 400
+    
+    if novo_status not in status_validos:
+        return jsonify({'erro': f'Status Invalido! Favor usar os permitidos: {status_validos}'})
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT id FROM ordens WHERE id = ?', (ordem_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        return jsonify({'erro': f'Ordem {ordem_id} não encontrada.'}), 404
+    
+    # De fato atualizando a execução
+    cursor.execute('UPDATE ordens SET status = ? WHERE id = ?', (novo_status, ordem_id))
+    
+    conn.commit()
+    conn.close()
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM ordens WHERE id = ?', (ordem_id,))
+    ordem_atualizada = cursor.fetchone()
+    conn.close()
+    
+    return jsonify(dict(ordem_atualizada)), 200
+    
+# ROTA - REMOVER UMA ORDEM (DELETE)
+@app.route('/ordens/<int:ordem_id>', methods=['DELETE'])
+def remover_ordem(ordem_id):
+    """
+    Remover permanentemente uma ordem de produção pelo ID.
+    
+    Parametros de URL:
+        ordem_id (int): ID da ordem a ser removida.
+        
+    Retorna:
+        200 - Confirmação (mensagem) 
+        400 - Erro (mensagem) se a ordem não for encontrada
+    """
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Verificação de existência antes de DELETAR o registro
+    cursor.execute('SELECT id, produto FROM ordens WHERE id = ?', (ordem_id,))
+    ordem = cursor.fetchone()
+    
+    if ordem is None:
+        conn.close()
+        return jsonify({'erro': f'Ordem de numero {ordem_id} não encontrada.'}), 404
+    # Variavel que guarda o nome do produto apagado para ser usado posteriormente na mensagem de confirmação.
+    
+    nome_produto_apagado = ordem['produto']
+
+    cursor.execute('DELETE FROM ordens WHERE id = ?', (ordem_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify ({'mensagem': f'Ordem de numero {ordem_id} ({nome_produto_apagado}) removida com sucesso', 'id_removido': ordem_id}), 200
+        
 # ----------------------------------------- PONTO DE PARTIDA -----------------------------------------
 if __name__== '__main__':
     init_db()
